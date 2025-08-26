@@ -162,7 +162,7 @@ if __name__ == "__main__":
         print(f"Running forward-only pass...")
         result_fwd = benchmark_model(
             model_size=model_name,
-            context_length=1024,
+            context_length=512,
             batch_size=4,
             warmup_steps=5,
             measure_steps=10,
@@ -175,7 +175,7 @@ if __name__ == "__main__":
         print(f"Running forward+backward pass...")
         result_fwd_bwd = benchmark_model(
             model_size=model_name,
-            context_length=1024,
+            context_length=512,
             batch_size=4,
             warmup_steps=5,
             measure_steps=10,
