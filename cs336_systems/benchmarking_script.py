@@ -2,6 +2,7 @@ import argparse
 import timeit
 import torch
 import numpy as np 
+import torch.cuda.nvtx as nvtx
 
 from cs336_basics.model import BasicsTransformerLM
 from cs336_basics.data import get_batch 
