@@ -31,6 +31,52 @@ def _attn_fwd_inner(
         # Only used for non-causal attention
         lo, hi = 0, SEQ_LEN
 
+    K_block = tl.advance(K_block_ptr, (0, lo))
+    V_block = tl.advance(V_block_ptr, (0, lo))
+
+    # loop over k,v blocks in parallel 
+    for start_kv in range(lo, hi, BLOCK_SIZE_KV):
+        start_kv = tl.multiple_of(start_kv, BLOCK_SIZE_KV)
+        
+        # compute qk 
+        K_block = tl.load(K_block_ptr)
+        QK_block = tl.dot(Q_block, K_block) # K already transposed
+
+        if STAGE == 2:
+            mask = offs_q[:, None] >= (start_kv + offs_kv[None, :])
+            QK_block = QK_block * softmax_scale + tl.where(mask, 0, -1.0e6)
+            m_ij = tl.maximum(m_i, tl.max(QK_block, 1))
+            QK_block -= m_ij[:, None]
+        else:
+            # Compute the maximum value of qk or keep the old max value
+            m_ij = tl.maximum(m_i, tl.max(QK_block, 1) * softmax_scale)
+            QK_block = QK_block * softmax_scale - m_ij[:, None]
+
+        # Compute the exponential of each dot product, so now we are computing exp(qk_ij - m_ij)
+        P_block = tl.math.exp(QK_block)
+        # Compute the sum by rows of the attention scores
+        l_ij = tl.sum(P_block, 1)
+
+        # This is the correction factor for the previous l_i
+        alpha = tl.math.exp(m_i - m_ij)
+        # Apply the correction factor to the previous l_i and add the new l_ij
+        l_i = l_i * alpha + l_ij
+
+        V_block = tl.load(V_block_ptr)
+        P_block = P_block.to(tl.float16)
+        # This computes the following: O_new = P x V + O_old * alpha
+        O_block = O_block * alpha[:, None]
+        O_block = tl.dot(P_block, V_block, O_block)
+
+        m_i = m_ij
+
+        # Move to the next block of K and V
+        V_block_ptr = tl.advance(V_block_ptr, (BLOCK_SIZE_KV, 0))
+        K_block_ptr = tl.advance(K_block_ptr, (0, BLOCK_SIZE_KV))
+    return O_block, l_i, m_i
+    
+
+
 @triton.jit
 def _attn_fwd(
     Q, # this is a pointer to the Q matrix 
@@ -165,6 +211,15 @@ def _attn_fwd(
             offs_kv,
             SEQ_LEN,
         )
+
+         # epilogue
+    m_i += tl.math.log(
+        l_i
+    )  # This is needed to compute the logsumexp for the backwards pass
+    O_block = O_block / l_i[:, None]
+    m_ptrs = M + index_batch_head * SEQ_LEN + offs_q
+    tl.store(m_ptrs, m_i)
+    tl.store(O_block_ptr, O_block.to(O.type.element_ty))
 
 
   

@@ -1,0 +1,10 @@
+b) For the large model, 
+
+Forward + Backward: 516.75 ms
+
+Forward Only: 169.07 ms
+
+Backward Only (calculated): 516.75 - 169.07 = 347.68 ms
+
+ For the large model, the average time is ~517 ms, but the standard deviation is only ~1.7 ms. This is very small
+
