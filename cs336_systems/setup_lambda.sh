@@ -25,7 +25,7 @@ source ~/.bashrc
 echo ""
 echo "--- [Step 5/6] Installing Nsight Systems Profiler... ---"
 # Installs the specific version of Nsight Systems that we found.
-sudo apt-get install -y nsight-systems-2025.3.2
+sudo apt-get install -y nsight-systems
 
 echo ""
 echo "--- [Step 6/6] Cloning repository and changing directory... ---"
