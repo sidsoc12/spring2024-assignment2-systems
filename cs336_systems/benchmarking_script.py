@@ -7,6 +7,9 @@ import torch.cuda.nvtx as nvtx
 from cs336_basics.model import BasicsTransformerLM
 from cs336_basics.data import get_batch 
 from cs336_basics.nn_utils import cross_entropy 
+import math
+from cs336_basics.nn_utils import softmax
+import cs336_basics.model as model_module
 
 MODEL_CONFIGS = { 
     "small" : {"d_model": 768, "d_ff": 3072, "num_layers": 12, "num_heads": 12},
@@ -15,6 +18,28 @@ MODEL_CONFIGS = {
     "xl": {"d_model": 1600, "d_ff": 6400, "num_layers": 48, "num_heads": 25},
     "2.7B": {"d_model": 2560, "d_ff": 10240, "num_layers": 32, "num_heads": 32},
 }
+
+@nvtx.range("scaled_dot_product_attention")
+def annotated_scaled_dot_product_attention(Q, K, V, mask=None):
+    """An annotated version of scaled_dot_product_attention for profiling."""
+    d_k = K.shape[-1]
+
+    # This label will mark the QKᵀ matrix multiplication
+    with nvtx.range("computing attention scores"):
+        attention_scores = torch.einsum("...qd,...kd->...qk", Q, K) / math.sqrt(d_k)
+
+    if mask is not None:
+        attention_scores = torch.where(mask, attention_scores, float("-inf"))
+
+    # This label will mark the softmax calculation
+    with nvtx.range("computing softmax"):
+        attention_weights = softmax(attention_scores, dim=-1)
+
+    # This label will mark the final matrix multiplication with V
+    with nvtx.range("final matmul"):
+        output = torch.einsum("...qk,...kv->...qv", attention_weights, V)
+
+    return output
 
 def benchmark_model(model_size: str, context_length: int, batch_size: int, warmup_steps: int, measure_steps: int, include_backward: bool, device: str):
     print("--- Starting Benchmark ---")
@@ -43,6 +68,9 @@ def benchmark_model(model_size: str, context_length: int, batch_size: int, warmu
 
     model.train()
 
+    model_module.scaled_dot_product_attention = annotated_scaled_dot_product_attention
+
+
     print(f"\nModel initialized with {model.get_num_params()/1e6:.2f}M parameters.")
 
     # generate dataset 
@@ -55,33 +83,47 @@ def benchmark_model(model_size: str, context_length: int, batch_size: int, warmu
 
     timings = []
 
-    for i in range( warmup_steps + measure_steps):
-        inputs, targets = get_batch(random_dataset, batch_size, context_length, device)
 
-
-        if "cuda" in device:
-            # make sure gpu preparation stuff is done and not happening asynchronously
-            torch.cuda.synchronize()
+    print("\nStarting warmup...")
+    with nvtx.range("warmup_phase"):
+        for _ in range(warmup_steps):
+            inputs, targets = get_batch(random_dataset, batch_size, context_length, device)
+            # Just run the model passes without timing
+            logits = model(inputs)
+            if include_backward:
+                loss = cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+                loss.backward()
         
-        t0 = timeit.default_timer()
 
-        # forward pass 
-        logits = model(inputs)
+    print("Starting measurement...")
+    with nvtx.range("measurement_phase"):
+        for i in range(measure_steps):
+            inputs, targets = get_batch(random_dataset, batch_size, context_length, device)
 
-        if include_backward:
-            loss = cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
-            loss.backward()
-        
-        if "cuda" in device:
-            torch.cuda.synchronize()
+            if "cuda" in device:
+                torch.cuda.synchronize()
+            
+            t0 = timeit.default_timer()
 
-        t1 = timeit.default_timer()
+            # We add inner NVTX ranges here to see the forward/backward breakdown
+            with nvtx.range("forward_pass"):
+                logits = model(inputs)
 
-        if i >= warmup_steps:
-            timings.append(t1 -t0)
-        
-        if (i + 1) % 5 == 0:
-            print(f"  Step {i+1}/{warmup_steps + measure_steps} complete.")
+            if include_backward:
+                with nvtx.range("backward_pass"):
+                    loss = cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+                    loss.backward()
+            
+            if "cuda" in device:
+                torch.cuda.synchronize()
+
+            t1 = timeit.default_timer()
+
+            # We only append timings from this measurement loop
+            timings.append(t1 - t0)
+            
+            if (i + 1) % 5 == 0:
+                print(f"  Measurement Step {i+1}/{measure_steps} complete.")
 
     timings_s = np.array(timings)
 
