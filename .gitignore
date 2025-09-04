@@ -166,3 +166,5 @@ cython_debug/
 
 cs336_systems/final_report*
 cs336_systems/full_sweep*
+# macOS system files
+.DS_Store
