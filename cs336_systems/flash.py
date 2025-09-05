@@ -2,6 +2,15 @@ import torch
 import triton 
 import triton.language as tl
 
+
+# Overall takeaways:
+
+# Memory Reduction: Using an "online softmax" algorithm avoids ever creating the giant (N, N) attention matrix in main memory.
+
+# Hardware Optimization: Tiling breaks the problem into small blocks that fit into the GPU's ultra-fast SRAM, which enables the online softmax and improves parallelism.
+
+# Speedup: Kernel fusion combines all the steps (matrix multiplies, softmax, etc.) into a single GPU operation, which drastically reduces slow data transfers to and from the main GPU memory (HBM).
+
 @triton.jit
 def _attn_fwd_inner(
     O_block,
@@ -65,7 +74,7 @@ def _attn_fwd_inner(
         V_block = tl.load(V_block_ptr)
         P_block = P_block.to(tl.float16)
         # This computes the following: O_new = P x V + O_old * alpha
-        O_block = O_block * alpha[:, None]
+        O_block = O_block * alpha[:, None] # fixing the attention scores by reintroducing the alpha factor (the maximumß)
         O_block = tl.dot(P_block, V_block, O_block)
 
         m_i = m_ij
@@ -73,6 +82,8 @@ def _attn_fwd_inner(
         # Move to the next block of K and V
         V_block_ptr = tl.advance(V_block_ptr, (BLOCK_SIZE_KV, 0))
         K_block_ptr = tl.advance(K_block_ptr, (0, BLOCK_SIZE_KV))
+
+        # instead of saving the entire attention amtrix in memory at each pointin time theres is only the q block, the k block, the v block, two O blocks, and the attention between the q block and k block.
     return O_block, l_i, m_i
     
 

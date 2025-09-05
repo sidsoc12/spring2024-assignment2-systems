@@ -80,10 +80,24 @@ Memory Profiling
 
 b) 
 
+128: 24.5 G 
 
+256: 35.0 G 
 
-d)
+512: 70.G 
+
+512 (full train): 70 GB forward, 55 GB backward 
+
+c) 
+
+512: infer: 65 GB 
+
+512 bf_16 train: peak 60 g during forward and 55 GB during backward
+
+d)  
 
 (4 * 512 * 2560 * 4 bytes/float) / 1024² = 20 MB per tensor
 
 e) 
+
+The largest allocations are 128.0 MiB each. The stack trace shows these allocations originate from the softmax function within scaled_dot_product_attention, specifically when a temporary tensor is created to store the results of the torch.exp() operation.
