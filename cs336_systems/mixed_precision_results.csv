@@ -1,0 +1,11 @@
+model_size,precision,pass_type,avg_time_ms
+small,fp32,forward+backward,121.23537809999334
+small,bf16,forward+backward,136.9688760000031
+medium,fp32,forward+backward,262.6772205999998
+medium,bf16,forward+backward,200.04383500000245
+large,fp32,forward+backward,516.7678655000032
+large,bf16,forward+backward,256.0625416000107
+xl,fp32,forward+backward,1023.8552425999899
+xl,bf16,forward+backward,392.4633925000023
+2.7B,fp32,forward+backward,1583.757596800001
+2.7B,bf16,forward+backward,365.09019010000543

@@ -56,4 +56,34 @@ b)
 The parts of layer normalization sensitive to mixed precision are the large-scale sum reductions used to calculate the mean and variance, which can suffer from compounding precision errors. With FP16, the squaring of values to compute variance is also extremely sensitive to overflow due to FP16's small dynamic range. We still need to treat layer norm differently with BF16 because while its FP32-like dynamic range prevents overflow, its low precision still makes the accumulation steps less accurate than if they were performed in FP32.
 
 
-c) 
+c)  model_size   | precision   | pass_type        |   avg_time_ms |
+|:-------------|:------------|:-----------------|--------------:|
+| small        | fp32        | forward+backward |       121.235 |
+| small        | bf16        | forward+backward |       136.969 |
+| medium       | fp32        | forward+backward |       262.677 |
+| medium       | bf16        | forward+backward |       200.044 |
+| large        | fp32        | forward+backward |       516.768 |
+| large        | bf16        | forward+backward |       256.063 |
+| xl           | fp32        | forward+backward |      1023.86  |
+| xl           | bf16        | forward+backward |       392.463 |
+| 2.7B         | fp32        | forward+backward |      1583.76  |
+| 2.7B         | bf16        | forward+backward |       365.09  |
+
+
+Using BF16 mixed precision provides a dramatic speedup that increases with model size, starting from a 1.3x speedup on the medium model and growing to an impressive 4.3x speedup on the 2.7B parameter model. This trend occurs because larger models are more compute-bound, spending a higher percentage of their runtime on the matrix multiplication operations that are directly accelerated by the GPU's Tensor Cores. Interestingly, for the smallest model, the BF16 version was slightly slower, likely because the overhead of casting data types outweighed the minimal performance gains from accelerating the small matrix multiplies.
+
+Almost 4x faster for bigger models! 
+
+
+
+Memory Profiling
+
+b) 
+
+
+
+d)
+
+(4 * 512 * 2560 * 4 bytes/float) / 1024² = 20 MB per tensor
+
+e) 
