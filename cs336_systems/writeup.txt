@@ -164,3 +164,14 @@ This single intermediate tensor accounts for nearly half of the total measured 1
 
 
 
+
+
+Transformer profiling with torch.compile
+
+Results Summary:
+| model_size   |   eager_forward_ms |   compiled_forward_ms |   eager_full_step_ms |   compiled_full_step_ms |
+|:-------------|-------------------:|----------------------:|---------------------:|------------------------:|
+| small        |              31.5  |                 19.89 |               120.33 |                   73.58 |
+| medium       |              86.88 |                 70.85 |               285.59 |                  238.7  |
+| large        |             172.89 |                145.53 |               592.92 |                  506.21 |
+

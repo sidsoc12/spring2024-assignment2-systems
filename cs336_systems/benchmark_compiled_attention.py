@@ -12,7 +12,7 @@ def naive_attention(q, k, v):
     output = torch.matmul(attn_probs, v)
     return output
 
-def benchmark(seq_len, d_model, batch_size, compiled_fn, device="cuda"):
+def benchmark(seq_len, d_model, batch_size, attention_fn, device="cuda"):
     """Generic benchmark function for either the original or compiled version."""
     dtype = torch.float32
     q = torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype, requires_grad=True)
@@ -22,39 +22,42 @@ def benchmark(seq_len, d_model, batch_size, compiled_fn, device="cuda"):
     warmup_steps = 10
     measure_steps = 100
 
-    # Warmup
+    # Warmup (needs to be corrected here as well)
     for _ in range(warmup_steps):
-        output = compiled_fn(q, k, v)
+        output = attention_fn(q, k, v)
         grad_output = torch.randn_like(output)
-        output.backward(grad_output, retain_graph=True)
+        # Use retain_graph=False (or omit it, as False is the default)
+        output.backward(grad_output)
     torch.cuda.synchronize()
 
-    # Time Forward Pass
+    # Time Forward Pass (this loop is fine)
     forward_timings = []
     for _ in range(measure_steps):
         t0 = timeit.default_timer()
-        output = compiled_fn(q, k, v)
+        output = attention_fn(q, k, v)
         torch.cuda.synchronize()
         t1 = timeit.default_timer()
         forward_timings.append(t1 - t0)
     avg_forward_ms = sum(forward_timings) / len(forward_timings) * 1000
 
-    # Time Backward Pass
+    # --- THIS IS THE CORRECTED BACKWARD TIMING LOOP ---
     backward_timings = []
     for _ in range(measure_steps):
-        # We need a fresh graph for each backward pass in the compiled case
-        output = compiled_fn(q, k, v) 
+        # 1. Run a fresh forward pass to create a new graph
+        output = attention_fn(q, k, v) 
         grad_output = torch.randn_like(output)
         torch.cuda.synchronize() # Sync before timing backward
+        
         t0 = timeit.default_timer()
-        output.backward(grad_output, retain_graph=False) # No retain_graph needed now
+        # 2. Call backward with retain_graph=False (the default)
+        output.backward(grad_output) 
         torch.cuda.synchronize()
         t1 = timeit.default_timer()
         backward_timings.append(t1 - t0)
+        
     avg_backward_ms = sum(backward_timings) / len(backward_timings) * 1000
     
     return { "forward_ms": avg_forward_ms, "backward_ms": avg_backward_ms }
-
 if __name__ == "__main__":
     BATCH_SIZE = 8
     D_MODELS = [16, 32, 64, 128]
