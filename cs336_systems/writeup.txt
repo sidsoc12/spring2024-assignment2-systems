@@ -101,3 +101,66 @@ d)
 e) 
 
 The largest allocations are 128.0 MiB each. The stack trace shows these allocations originate from the softmax function within scaled_dot_product_attention, specifically when a temporary tensor is created to store the results of the torch.exp() operation.
+
+
+
+
+
+ATTENTION Profiling
+
+|   seq_len |   d_model |   forward_ms |   backward_ms |     mem_gb |
+
+|----------:|----------:|-------------:|--------------:|-----------:|
+
+|       256 |        16 |    0.268386  |       2.0166  |  0.0672607 |
+
+|      1024 |        16 |    0.291842  |       2.03002 |  0.128418  |
+
+|      4096 |        16 |    2.07373   |       4.47566 |  1.07617   |
+
+|      8192 |        16 |    7.76747   |      17.4768  |  4.08984   |
+
+|     16384 |        16 |   33.3292    |      63.7745  | 16.1172    |
+
+|       256 |        32 |    0.0635338 |       1.31915 |  0.0681152 |
+
+|      1024 |        32 |    0.274927  |       1.33921 |  0.131836  |
+
+|      4096 |        32 |    2.193     |       3.96776 |  1.08984   |
+
+|      8192 |        32 |    8.49178   |      14.9719  |  4.11719   |
+
+|     16384 |        32 |   36.1861    |      58.4702  | 16.1719    |
+
+|       256 |        64 |    0.0647806 |       1.06559 |  0.0698242 |
+
+|      1024 |        64 |    0.288057  |       1.08576 |  0.138672  |
+
+|      4096 |        64 |    2.65901   |       4.62863 |  1.11719   |
+
+|      8192 |        64 |   10.3772    |      17.576   |  4.17188   |
+
+|     16384 |        64 |   43.838     |      69.0125  | 16.2812    |
+
+|       256 |       128 |    0.0717744 |       1.14435 |  0.0732422 |
+
+|      1024 |       128 |    0.386816  |       1.059   |  0.152344  |
+
+|      4096 |       128 |    3.72524   |       6.38202 |  1.17188   |
+
+|      8192 |       128 |   15.081     |      24.3876  |  4.28125   |
+
+|     16384 |       128 |   60.5877    |      92.8463  | 16.5       |
+
+
+The benchmark results clearly demonstrate that the memory usage of the naïve attention mechanism scales quadratically with sequence length, N. For instance, with d_model=64, doubling the sequence length from 4096 to 8192 resulted in a nearly 4x increase in memory usage (from 1.12 GB to 4.17 GB), and doubling it again to 16384 resulted in another 4x increase to 16.28 GB, perfectly matching the theoretical O(N²) complexity. This quadratic memory cost, which grows rapidly to consume all available VRAM, is the primary bottleneck preventing standard Transformers from scaling to long contexts. To eliminate this prohibitive cost, an algorithm like FlashAttention must be used, as it avoids explicitly materializing the full (N, N) attention matrix in memory.
+
+
+
+The dominant memory cost saved for the backward pass is the attention probabilities matrix, with a shape of (batch_size, seq_len, seq_len). For the configuration with B=8 and N=16384 using FP32 (4 bytes), the memory required for this single tensor is:
+Memory = 8 * 16384 * 16384 * 4 bytes = 8,589,934,592 bytes
+Memory = 8,589,934,592 / 1024³ = 8.0 GB
+This single intermediate tensor accounts for nearly half of the total measured 16.5 GB of allocated memory, confirming it as the primary bottleneck.
+
+
+
