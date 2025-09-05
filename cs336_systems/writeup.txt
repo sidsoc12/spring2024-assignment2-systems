@@ -8,3 +8,52 @@ Backward Only (calculated): 516.75 - 169.07 = 347.68 ms
 
  For the large model, the average time is ~517 ms, but the standard deviation is only ~1.7 ms. This is very small
 
+1. a) 
+
+    Nsight Profiler: 63.856 ms
+
+    Python timeit (from your CSV): 87.87 ms (for the forward-only pass)
+
+    The nsys profiler is more accurate. It measures the time from the start of the first GPU kernel to the end of the last one. The Python timeit measurement includes a small amount of CPU overhead from the Python code itself 
+
+
+    b) 
+    
+   The sm80_xmma_gemm matrix multiplication kernel is the most time-consuming operation, accounting for 47.2% of the total runtime in the forward pass. This same family of gemm kernels also dominates the backward pass, where its variants combine to account for over 38% of the total time.
+   
+   
+    c) Besides matrix multiplications, elementwise_kernel and vectorized_elementwise_kernel calls, used for activations and additions, are also significant, collectively accounting for over 15% of the forward pass runtime. Additionally, reduce_kernel operations for layer normalization and softmax contribute another 4% of the total time.
+
+    d) 66.3% vs 54.5%. 
+    The total time spent on matrix multiplication (the numerator) is roughly the same in both scenarios. However, in the full training step, we've added the optimizer.step(), which introduces many new, fast, non-gemm kernels (like vectorized_elementwise_kernel for updating weights). These new kernels increase the total time of the step (the denominator), which causes the fraction of time spent on matrix multiplication to decrease.
+
+
+    e) Within the self-attention layer, the average runtime for a single matrix multiplication (computing attention scores) was approximately 146 µs, while the softmax operation took approximately 316 µs. Although the matrix multiplication performs orders of magnitude more FLOPs (O(N³)) than softmax (O(N²)), their runtimes are comparable. This indicates that the matmul is compute-bound and highly optimized for the GPU's Tensor Cores, whereas the softmax is memory-bound, limited by the speed of data movement rather than the raw number of calculations.
+
+
+
+
+Mixed Precision Accumulation
+
+The results show that accumulating in pure FP16 is highly inaccurate, yielding a result of 9.953125 instead of the expected 10.0 due to the severe compounding of representation and rounding errors. Using a high-precision FP32 accumulator, as is central to mixed-precision training, proves far more stable and accurate, yielding 10.0021.... This demonstrates that keeping the accumulation in a higher precision format is critical for maintaining numerical stability, even if the values being added are themselves low-precision.
+
+
+a) 
+Model parameters: torch.float32 (The master weights are always stored in FP32)
+
+Output of ToyModel.fc1: torch.float16 (Linear layers are autocast to FP16 for speed)
+
+Output of ToyModel.ln: torch.float32 (LayerNorm is kept in FP32 for numerical stability)
+
+Model’s predicted logits: torch.float16 (The output of the final linear layer, fc2, is autocast to FP16)
+
+The loss: torch.float32 (The loss calculation is done outside the autocast context or is kept in FP32 for stability)
+
+The model’s gradients: torch.float32 (Gradients are calculated with respect to the master FP32 parameters)
+
+
+b) 
+The parts of layer normalization sensitive to mixed precision are the large-scale sum reductions used to calculate the mean and variance, which can suffer from compounding precision errors. With FP16, the squaring of values to compute variance is also extremely sensitive to overflow due to FP16's small dynamic range. We still need to treat layer norm differently with BF16 because while its FP32-like dynamic range prevents overflow, its low precision still makes the accumulation steps less accurate than if they were performed in FP32.
+
+
+c) 
