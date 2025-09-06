@@ -137,8 +137,17 @@ compiled_flash_bwd = torch.compile(_flash_bwd)
 class FlashAttentionTriton(torch.autograd.Function):
     @staticmethod
     def forward(ctx, Q, K, V, is_causal=False): # Flag has default value
+        input_is_3d = Q.ndim == 3
+        if input_is_3d:
+            Q = Q.unsqueeze(1)
+            K = K.unsqueeze(1)
+            V = V.unsqueeze(1)
+
         BATCH_SIZE, NUM_HEADS, N_QUERIES, D = Q.shape
         _, _, N_KEYS, _ = K.shape
+        ...
+        # Save flag so we can squeeze back later
+        ctx.input_is_3d = input_is_3d
         Q_TILE_SIZE, K_TILE_SIZE = 128, 128
         O = torch.empty_like(Q)
         L = torch.zeros(BATCH_SIZE, NUM_HEADS, N_QUERIES, device=Q.device, dtype=torch.float32)
@@ -164,6 +173,11 @@ class FlashAttentionTriton(torch.autograd.Function):
         # Save for backward pass
         ctx.save_for_backward(Q, K, V, O, L)
         ctx.is_causal = is_causal # Save the flag for backward
+        
+        if ctx.input_is_3d:
+             O = O.squeeze(1)
+
+        
         return O
 
     @staticmethod
