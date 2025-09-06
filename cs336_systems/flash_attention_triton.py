@@ -170,14 +170,17 @@ class FlashAttentionTriton(torch.autograd.Function):
             is_causal=is_causal, # Pass the flag to the kernel
         )
 
-        # Save for backward pass
-        ctx.save_for_backward(Q, K, V, O, L)
-        ctx.is_causal = is_causal # Save the flag for backward
-        
-        if ctx.input_is_3d:
-             O = O.squeeze(1)
+        if NUM_HEADS == 1:
+            L_reduced = L.squeeze(1)  # (B, N)
+        else:
+            L_reduced = L.mean(dim=1)  # (B, N) if multi-head
 
-        
+        ctx.save_for_backward(L_reduced)
+        ctx.is_causal = is_causal
+        ctx.input_is_3d = input_is_3d
+
+        if input_is_3d:
+            O = O.squeeze(1)
         return O
 
     @staticmethod
