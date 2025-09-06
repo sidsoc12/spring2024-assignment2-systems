@@ -21,27 +21,27 @@ def run_benchmark(seq_len, d_model, dtype, is_flash):
     BATCH_SIZE, NUM_HEADS = 1, 1 # Fixed as per prompt
     IS_CAUSAL = True
     
-    # Use a try-except block to gracefully handle Out-of-Memory errors
     try:
         q = torch.randn(BATCH_SIZE, NUM_HEADS, seq_len, d_model, device="cuda", dtype=dtype)
         k = torch.randn(BATCH_SIZE, NUM_HEADS, seq_len, d_model, device="cuda", dtype=dtype)
         v = torch.randn(BATCH_SIZE, NUM_HEADS, seq_len, d_model, device="cuda", dtype=dtype)
         dO = torch.randn_like(q)
 
-        # Select the correct attention function
         attention_fn = FlashAttentionTriton.apply if is_flash else vanilla_attention
         
-        # Define lambdas for the three measurements that do_bench will call
         fwd_fn = lambda: attention_fn(q, k, v, IS_CAUSAL)
-        bwd_fn = lambda: fwd_fn().backward(dO, retain_graph=True)
-        fwd_bwd_fn = lambda: fwd_fn().backward(dO)
+        
+        output_for_bwd = fwd_fn()
+        bwd_fn = lambda: output_for_bwd.backward(dO, retain_graph=True)
+        
+        fwd_bwd_fn = lambda: attention_fn(q, k, v, IS_CAUSAL).backward(dO)
 
-        # Run the benchmarks using triton.testing.do_bench
-        # It returns (min, max, mean, median, num_iters)
-        # We will use the median as it's robust to outliers.
-        fwd_latency = triton.testing.do_bench(fwd_fn, rep=50)[3]
-        bwd_latency = triton.testing.do_bench(bwd_fn, rep=50)[3]
-        fwd_bwd_latency = triton.testing.do_bench(fwd_bwd_fn, rep=50)[3]
+        # --- THIS IS THE CRITICAL FIX ---
+        # The new version of do_bench returns a single float (the median), so we remove the [3]
+        fwd_latency = triton.testing.do_bench(fwd_fn, rep=50)
+        bwd_latency = triton.testing.do_bench(bwd_fn, rep=50)
+        fwd_bwd_latency = triton.testing.do_bench(fwd_bwd_fn, rep=50)
+        # --- END OF FIX ---
         
         return {
             "forward_ms": fwd_latency,
@@ -55,10 +55,8 @@ if __name__ == "__main__":
     SEQ_LENS = [128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
     D_MODELS = [16, 32, 64, 128]
     DTYPES = [torch.float32, torch.bfloat16]
-    
     all_results = []
     
-    # Iterate through the Cartesian product of all configurations
     for seq_len, d_model, dtype in itertools.product(SEQ_LENS, D_MODELS, DTYPES):
         dtype_str = "bf16" if dtype == torch.bfloat16 else "fp32"
         print(f"--- Benchmarking: seq_len={seq_len}, d_model={d_model}, dtype={dtype_str} ---")
@@ -70,15 +68,10 @@ if __name__ == "__main__":
         flash_results = run_benchmark(seq_len, d_model, dtype, is_flash=True)
         
         all_results.append({
-            "seq_len": seq_len,
-            "d_model": d_model,
-            "precision": dtype_str,
-            "vanilla_fwd_ms": vanilla_results["forward_ms"],
-            "flash_fwd_ms": flash_results["forward_ms"],
-            "vanilla_bwd_ms": vanilla_results["backward_ms"],
-            "flash_bwd_ms": flash_results["backward_ms"],
-            "vanilla_fwd_bwd_ms": vanilla_results["fwd_bwd_ms"],
-            "flash_fwd_bwd_ms": flash_results["fwd_bwd_ms"],
+            "seq_len": seq_len, "d_model": d_model, "precision": dtype_str,
+            "vanilla_fwd_ms": vanilla_results["forward_ms"], "flash_fwd_ms": flash_results["forward_ms"],
+            "vanilla_bwd_ms": vanilla_results["backward_ms"], "flash_bwd_ms": flash_results["backward_ms"],
+            "vanilla_fwd_bwd_ms": vanilla_results["fwd_bwd_ms"], "flash_fwd_bwd_ms": flash_results["fwd_bwd_ms"],
         })
         
     results_df = pd.DataFrame(all_results)
@@ -88,3 +81,4 @@ if __name__ == "__main__":
     print("Results saved to flash_attention_benchmark.csv")
     print("\nResults Summary:")
     print(results_df.to_markdown(index=False))
+
