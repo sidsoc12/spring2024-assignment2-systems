@@ -13,7 +13,7 @@ from cs336_basics.model import BasicsTransformerLM
 from cs336_basics.data import get_batch
 from cs336_basics.nn_utils import cross_entropy
 from cs336_basics.optimizer import AdamW
-from cs336_systems.ddp_overlap import DDPIndividualParameters # Import your custom DDP class
+from cs336_systems.ddp_overlap import DDPIndividualParameters
 
 # --- Model Configuration for "XL" size ---
 MODEL_CONFIG = {
@@ -22,14 +22,11 @@ MODEL_CONFIG = {
 
 # --- DDP Setup and Cleanup Functions ---
 def setup(rank, world_size):
-    """Initializes the distributed process group."""
     os.environ["MASTER_ADDR"] = "localhost"
-    # Port is set in the main block
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
     torch.cuda.set_device(rank)
 
 def cleanup():
-    """Destroys the distributed process group."""
     dist.destroy_process_group()
 
 # --- The Main DDP Worker Function ---
@@ -37,13 +34,10 @@ def ddp_worker(rank, world_size):
     setup(rank, world_size)
     device = f'cuda:{rank}'
 
-    # Instantiate the base model
     model = BasicsTransformerLM(
         vocab_size=10000, context_length=512, rope_theta=10000, **MODEL_CONFIG
     ).to(device)
     
-
-    # wrap the model with the DDPIndividualParameters class
     ddp_model = DDPIndividualParameters(model)
     
     optimizer = AdamW(ddp_model.parameters(), lr=1e-3)
@@ -56,36 +50,48 @@ def ddp_worker(rank, world_size):
 
     # --- Benchmarking Loop ---
     for i in range(warmup_steps + measure_steps):
-        # Add NVTX range for the entire step for profiling
+      
+        torch.cuda.synchronize(device)
+        step_start_time = timeit.default_timer()
+       
+        
         with nvtx.range(f"step_{i}"):
             inputs, targets = get_batch(random_dataset, batch_size=4, context_length=512, device=device)
 
-            # Use the DDP-wrapped model for the forward pass
             with nvtx.range("forward_pass"):
                 logits = ddp_model(inputs)
             
             loss = cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
             
-            # The backward pass will automatically trigger the asynchronous hooks
             with nvtx.range("backward_pass"):
                 loss.backward()
             
-            # Wait for all background gradient communications to finish before the optimizer step
             with nvtx.range("gradient_sync_wait"):
                 ddp_model.finish_gradient_synchronization()
             
-            # Perform the optimizer step
             with nvtx.range("optimizer_step"):
                 optimizer.step()
                 optimizer.zero_grad()
+        
+      
+        torch.cuda.synchronize(device)
+        step_end_time = timeit.default_timer()
 
-            
+        if i >= warmup_steps:
+            total_step_times.append(step_end_time - step_start_time)
+       
+    if rank == 0:
+
+        avg_step_time_ms = np.mean(total_step_times) * 1000
+        print(f"\n--- DDP Benchmark Results (Overlapped) ---")
+        print(f"Average time per training step: {avg_step_time_ms:.2f} ms")
+        print("----------------------------------------------------")
+       
 
     cleanup()
 
 if __name__ == "__main__":
     world_size = 2
-    # Find a free port to avoid conflicts
     sock = socket.socket(); sock.bind(('', 0)); port = sock.getsockname()[1]; sock.close()
     os.environ["MASTER_PORT"] = str(port)
     
@@ -93,4 +99,5 @@ if __name__ == "__main__":
              args=(world_size,),
              nprocs=world_size,
              join=True)
+
 
