@@ -48,14 +48,8 @@ class DDPIndividualParameters(nn.Module):
         Hook function that is called after the gradient is computed for a parameter.
         """
 
-        if self.world_size > 1:
-            # do averaging of gradients of batch size before communication instead of after 
-            param.grad_div_(self.world_size)
-
-            # launch all-reduce asynchronously 
-
-            handle = dist.all_reduce(param.grad, op=dist.ReduceOp.SUM, async_op=True)
-            
+        if param.grad is not None:
+            handle = dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM, async_op=True)
             self.handles.append(handle)
 
     def forward(self, *inputs, **kwargs) -> torch.Tensor:
@@ -70,6 +64,11 @@ class DDPIndividualParameters(nn.Module):
             handle.wait()
         
         self.handles.clear() # clear handles after waiting for them to complete 
+
+        if self.world_size > 1:
+            for param in self.module.parameters():
+                if param.grad is not None:
+                    param.grad.data /= self.world_size
 
         
         
