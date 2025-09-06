@@ -233,17 +233,6 @@ def _attn_fwd(
     tl.store(O_block_ptr, O_block.to(O.type.element_ty))
 
 
-  
-    
-
-    
-
-
-
-
-
-
-
 
 
 class FlashAttention(torch.autograd.Function):
