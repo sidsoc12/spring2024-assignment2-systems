@@ -339,3 +339,20 @@ Backend=nccl, world_size=6, size=1024MB, times=[0.030765438452363014, 0.03076313
 
 The benchmarking setup was designed to measure the communication overhead of a naïve Distributed Data Parallel (DDP) implementation on the "XL" Transformer model in a single-node, 2x H100 GPU configuration. Each training step—including the forward pass, backward pass, gradient communication, and optimizer step—was timed in its entirety. A separate, synchronized timer was used to isolate the time spent exclusively on the gradient All-Reduce operations, allowing for a precise calculation of the communication overhead. The experiment utilized the high-speed NCCL backend for inter-GPU communication, and the final reported latencies are the average of 10 measurement steps following a 5-step warm-up period to ensure stable and accurate results.
 
+Starting DDP benchmark for XL model on 2 GPUs...
+
+--- DDP Benchmark Results (XL Model, 2 GPUs) ---
+Average time per training step: 904.70 ms
+Average time spent on gradient communication: 127.20 ms
+Proportion of time spent on communication: 14.06%
+--------------------------------------------------
+
+
+3. 
+
+Reduced a little bit with batched communication 
+
+--- DDP Benchmark Results (XL Model, 2 GPUs) ---
+Average time per training step: 902.66 ms
+Average time spent on gradient communication: 126.17 ms
+Proportion of time spent on communication: 13.98%

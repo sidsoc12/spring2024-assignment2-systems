@@ -153,6 +153,8 @@ def ddp_worker(rank, world_size):
 
 if __name__ == "__main__":
     # We are running on a single node with 2 GPUs
+
+    # processes on the cpu operating their own gpu 
     world_size = 2
     mp.spawn(ddp_worker,
              args=(world_size,),
