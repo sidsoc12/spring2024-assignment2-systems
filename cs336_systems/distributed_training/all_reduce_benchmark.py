@@ -56,12 +56,12 @@ def benchmark_allreduce(rank, world_size, tensor_size_mb, num_iters=20, warmup=5
 
     dist.all_gather(times, avg_time_tensor)
 
-    if rank = 0:   
+    if rank == 0:   
         print(f"Backend={backend}, world_size={world_size}, size={tensor_size_mb}MB, times={[t.item() for t in times]}")
     
     dist.destroy_process_group()
 
-    
+
 
 
 
