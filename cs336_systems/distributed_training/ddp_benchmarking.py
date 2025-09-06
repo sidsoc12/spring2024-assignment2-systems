@@ -7,6 +7,8 @@ import torch.multiprocessing as mp
 import timeit
 import numpy as np
 
+from torch._utils import _flatten_dense_tensors
+from torch._utils import _unflatten_dense_tensors
 
 from cs336_basics.model import BasicsTransformerLM
 from cs336_basics.data import get_batch
@@ -25,6 +27,7 @@ def setup(rank, world_size):
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "29500"
     # 'nccl' backend for NVIDIA GPUs.
+    # initialize communication for each process to the group
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
     # Pin the process to a specific GPU
     torch.cuda.set_device(rank)
@@ -76,6 +79,8 @@ def ddp_worker(rank, world_size):
         # Each process gets a full batch of data. DDP handles sharding internally
         # when you use a DistributedSampler, but for this simple case, we just
         # let each process compute on a full batch.
+
+        # total batch size of 8 across 2 GPUs
         inputs, targets = get_batch(random_dataset, batch_size=4, context_length=512, device=device)
 
         # Forward and Backward pass
@@ -83,16 +88,41 @@ def ddp_worker(rank, world_size):
         loss = cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
         loss.backward()
 
-        # --- Measure Communication Time ---
+        # --- Measure Communication Time for each step  ---
+
+        # REDUCE ALL GRADIENTS
+
         comm_start_time = timeit.default_timer()
-        for param in model.parameters():
-            if param.grad is not None:
-                dist.all_reduce(param.grad, op=dist.ReduceOp.SUM)
-                param.grad /= world_size
+
+
+        # OLD reduce where new communicaiton call for each parameters (SLOW) incurs call overhead
+        # for param in model.parameters():
+        #     if param.grad is not None:
+        #         dist.all_reduce(param.grad, op=dist.ReduceOp.SUM)
+        #         param.grad /= world_size
+
+        # NEW reduce where parameters are batched into one communication call
+
+        gradients = [p.grad for p in model.parameters() if p.grad is not None]
+
+        # Flatten the gradients into a single tensor
+        flat_gradients = _flatten_dense_tensors(gradients)
+
+        dist.all_reduce(flat_gradients, op=dist.ReduceOp.SUM)
+        flat_gradients /= world_size
+
+        # Unflatten the gradients into the original parameter shapes
+
+        for grad, flat_grad in zip(gradients, _unflatten_dense_tensors(flat_gradients, gradients)):
+            grad.copy_(flat_grad)
+
+
         # Synchronize to wait for the All-Reduce to complete
         torch.cuda.synchronize(device)
+        # end of communication time measurement
         comm_end_time = timeit.default_timer()
-        
+
+        # --- Optimizer Step ---
         optimizer.step()
         optimizer.zero_grad()
         
