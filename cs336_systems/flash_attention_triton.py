@@ -148,7 +148,8 @@ class FlashAttentionTriton(torch.autograd.Function):
         ...
         # Save flag so we can squeeze back later
         ctx.input_is_3d = input_is_3d
-        Q_TILE_SIZE, K_TILE_SIZE = 128, 128
+        Q_TILE_SIZE, K_TILE_SIZE = 64, 64
+
         O = torch.empty_like(Q)
         L = torch.zeros(BATCH_SIZE, NUM_HEADS, N_QUERIES, device=Q.device, dtype=torch.float32)
         scale = D ** -0.5
