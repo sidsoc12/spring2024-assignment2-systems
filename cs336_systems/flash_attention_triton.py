@@ -175,7 +175,7 @@ class FlashAttentionTriton(torch.autograd.Function):
         else:
             L_reduced = L.mean(dim=1)  # (B, N) if multi-head
 
-        ctx.save_for_backward(L_reduced)
+        ctx.save_for_backward(Q, K, V, O, L, L_reduced)
         ctx.is_causal = is_causal
         ctx.input_is_3d = input_is_3d
 
@@ -186,7 +186,8 @@ class FlashAttentionTriton(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         # Retrieve saved tensors
-        Q, K, V, O, L = ctx.saved_tensors
+        Q, K, V, O, L, L_reduced = ctx.saved_tensors
+
         is_causal = ctx.is_causal
 
         # Call compiled backward
