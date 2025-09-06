@@ -4,35 +4,25 @@ from typing import Type
 
 import torch
 
-import cs336_systems.flash_attention_pytorch as flash_attention_pytorch
-import cs336_systems.flash_attention_triton as flash_attention_triton
+from cs336_systems.flash_attention_pytorch import FlashAttentionPytorch
+from cs336_systems.flash_attention_triton import FlashAttentionTriton
+
+
 def get_flashattention_autograd_function_pytorch() -> Type:
     """
-    Returns a torch.autograd.Function subclass that implements FlashAttention2.
-    The expectation is that this class will implement FlashAttention2
-    using only standard PyTorch operations (no Triton!).
-
-    Returns:
-        A class object (not an instance of the class)
+    Returns a torch.autograd.Function subclass that implements FlashAttention2
+    using only standard PyTorch operations.
     """
-    # For example: return MyFlashAttnAutogradFunctionClass
-    return flash_attention_pytorch
+    # This line now correctly returns the CLASS object
+    return FlashAttentionPytorch
 
 
-def get_flashattention_autograd_function_triton() -> Type:
+def get_flash_autograd_function_triton() -> Type:
     """
     Returns a torch.autograd.Function subclass that implements FlashAttention2
-    using Triton kernels.
-    The expectation is that this class will implement the same operations
-    as the class you return in get_flashattention_autograd_function_pytorch(),
-    but it should do so by invoking custom Triton kernels in the forward
-    and backward passes.
-
-    Returns:
-        A class object (not an instance of the class)
+    using a Triton kernel.
     """
-    # For example: return MyTritonFlashAttentionAutogradFunctionClass
-    return flash_attention_triton
+    return FlashAttentionTriton
 
 
 def get_ddp_individual_parameters(module: torch.nn.Module) -> torch.nn.Module:
