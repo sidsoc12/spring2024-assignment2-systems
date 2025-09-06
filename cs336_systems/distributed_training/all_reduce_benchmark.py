@@ -29,10 +29,40 @@ def benchmark_allreduce(rank, world_size, tensor_size_mb, num_iters=20, warmup=5
     
     num_elements = tensor_size_mb * 1024 * 1024 // 4  # convert MB to number of elements
 
+    # each process creates data on its own device
+    data = torch.randn(num_elements, dtype = torch.float32, device = device)
 
     # warmup
     for _ in range(warmup):
         dist.all_reduce(data)
+        if backend == "nccl":
+            torch.cuda.synchronize()
+    
+    start = time.time()
+
+    for _ in range(num_iters):
+        dist.all_reduce(data)
+        if backend == "nccl":
+            torch.cuda.synchronize()
+    
+    end = time.time()
+
+    avg_time = (end - start) / num_iters
+
+    # collect timings from all ranks
+
+    avg_time_tensor = torch.tensor([avg_time], device=device)
+    times = [torch.zeros(1, device=device) for _ in range(world_size)]
+
+    dist.all_gather(times, avg_time_tensor)
+
+    if rank = 0:   
+        print(f"Backend={backend}, world_size={world_size}, size={tensor_size_mb}MB, times={[t.item() for t in times]}")
+    
+    dist.destroy_process_group()
+
+    
+
 
 
 
