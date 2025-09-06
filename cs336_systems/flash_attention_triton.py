@@ -168,13 +168,12 @@ class FlashAttentionTriton(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-       # Retrieve saved tensors
+        # Retrieve saved tensors
         Q, K, V, O, L = ctx.saved_tensors
         is_causal = ctx.is_causal
-        
-        # Call our compiled backward pass implementation
-        dQ, dK, dV = compiled_flash_bwd(Q, K, V, O, L, dO, is_causal)
-        
-        # Return gradients in the correct order
-        return dQ, dK, dV, None # None for is_causal is not implemented yet.")
 
+        # Call compiled backward
+        dQ, dK, dV = compiled_flash_bwd(Q, K, V, O, L, grad_output, is_causal)
+
+        # Return grads for (Q, K, V, is_causal)
+        return dQ, dK, dV, None
