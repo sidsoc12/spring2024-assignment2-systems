@@ -85,9 +85,9 @@ class FlashAttentionPytorch(torch.autograd.Function):
                 
                 # 8. Compute the new output tile, O_i
                 # This is the "online output" update step
-                O_i = alpha.unsqueeze(-1) * O_i
-                O_i += torch.matmul(P_tilde.to(Vj_tile.dtype), Vj_tile)
-                
+                # 8. Compute the new output tile, O_i
+                O_i = alpha.unsqueeze(-1) * O_i + torch.einsum('b h i j, b h j d -> b h i d', P_tilde_ij, Vj)
+
                 # Update the running accumulators for the next iteration
                 l_i = l_new.squeeze(-1)
                 m_i = m_new
