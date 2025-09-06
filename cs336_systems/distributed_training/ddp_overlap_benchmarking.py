@@ -13,7 +13,7 @@ from cs336_basics.model import BasicsTransformerLM
 from cs336_basics.data import get_batch
 from cs336_basics.nn_utils import cross_entropy
 from cs336_basics.optimizer import AdamW
-from cs336_systems.ddp_overlap import DDPIndividualParameters
+from ddp_overlap import DDPIndividualParameters
 
 # --- Model Configuration for "XL" size ---
 MODEL_CONFIG = {
