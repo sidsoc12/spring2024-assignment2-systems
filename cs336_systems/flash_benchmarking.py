@@ -22,9 +22,10 @@ def run_benchmark(seq_len, d_model, dtype, is_flash):
     IS_CAUSAL = True
     
     try:
-        q = torch.randn(BATCH_SIZE, NUM_HEADS, seq_len, d_model, device="cuda", dtype=dtype)
-        k = torch.randn(BATCH_SIZE, NUM_HEADS, seq_len, d_model, device="cuda", dtype=dtype)
-        v = torch.randn(BATCH_SIZE, NUM_HEADS, seq_len, d_model, device="cuda", dtype=dtype)
+        q = torch.randn(BATCH_SIZE, NUM_HEADS, seq_len, d_model, device="cuda", dtype=dtype, requires_grad=True)
+        k = torch.randn(BATCH_SIZE, NUM_HEADS, seq_len, d_model, device="cuda", dtype=dtype, requires_grad=True)
+        v = torch.randn(BATCH_SIZE, NUM_HEADS, seq_len, d_model, device="cuda", dtype=dtype, requires_grad=True)
+
         dO = torch.randn_like(q)
 
         attention_fn = FlashAttentionTriton.apply if is_flash else vanilla_attention
