@@ -92,9 +92,15 @@ class FlashAttentionPytorch(torch.autograd.Function):
         else:
             L_reduced = L.mean(dim=1)  # (B, N), if multiple heads
 
+
         # Save only the log-sum-exp tensor
         ctx.save_for_backward(L_reduced)
         ctx.is_causal = is_causal
+
+        # If input was 3D, remove the dummy head dimension
+        if input_is_3d:
+            O = O.squeeze(1)
+
 
         return O
 
