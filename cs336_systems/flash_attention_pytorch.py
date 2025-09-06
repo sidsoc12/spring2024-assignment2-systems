@@ -100,7 +100,7 @@ class FlashAttentionPytorch(torch.autograd.Function):
             L[:, :, q_tile_start:q_tile_end] = m_i + torch.log(l_i)
         
         # Save necessary tensors for the backward pass
-        ctx.save_for_backward(Q, K, V, O, L)
+        ctx.save_for_backward(L)
         ctx.is_causal = is_causal
         
         return O
