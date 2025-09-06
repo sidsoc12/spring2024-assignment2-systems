@@ -4,11 +4,23 @@ import math
 class FlashAttentionPytorch(torch.autograd.Function):
     @staticmethod
     def forward(ctx, Q, K, V, is_causal=False):
-        # --- Setup ---
         # Get dimensions from the input tensors
+        # We start by checking the number of dimensions of the input tensor.
+        input_is_3d = Q.ndim == 3
+
+        # If the input is 3D, we add a dummy "NUM_HEADS" dimension of size 1.
+        # This makes the rest of our code work without changes, as it can
+        # consistently expect a 4D tensor.
+        if input_is_3d:
+            Q = Q.unsqueeze(1)
+            K = K.unsqueeze(1)
+            V = V.unsqueeze(1)
+
+        # Now, we can safely unpack the 4D shape.
         BATCH_SIZE, NUM_HEADS, N_QUERIES, D = Q.shape
         _, _, N_KEYS, _ = K.shape
-        
+       
+       
         # Determine tile sizes. As per the prompt, we'll use a fixed size.
         # In a real implementation, this would be tuned for the specific hardware.
         Q_TILE_SIZE = 128
