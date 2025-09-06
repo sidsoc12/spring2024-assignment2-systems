@@ -25,7 +25,7 @@ class DDPIndividualParameters(nn.Module):
 
         # get world size 
         if dist.is_initialized():
-            self.world_size = dist.get_world_size 
+            self.world_size = dist.get_world_size()
         else:
             self.world_size = 1
         
