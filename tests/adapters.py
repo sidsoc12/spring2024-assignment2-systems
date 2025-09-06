@@ -17,7 +17,9 @@ def get_flashattention_autograd_function_pytorch() -> Type:
     return FlashAttentionPytorch
 
 
-def get_flash_autograd_function_triton() -> Type:
+
+# The function name now exactly matches what the test expects.
+def get_flashattention_autograd_function_triton() -> Type:
     """
     Returns a torch.autograd.Function subclass that implements FlashAttention2
     using a Triton kernel.
