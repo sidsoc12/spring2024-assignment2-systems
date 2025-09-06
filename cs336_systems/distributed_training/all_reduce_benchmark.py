@@ -15,7 +15,7 @@ def setup(rank, world_size, backend):
         torch.cuda.set_device(rank)
 
 # ran for each process
-def benchmark_allreduce(rank, world_size, tensor_size_mb, num_iters=20, warmup=5):
+def benchmark_allreduce(rank, world_size, backend, tensor_size_mb, num_iters=20, warmup=5):
 
     # Initialize each process
     setup(rank, world_size, backend)
