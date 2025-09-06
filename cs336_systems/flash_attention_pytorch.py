@@ -20,7 +20,7 @@ class FlashAttentionPytorch(torch.autograd.Function):
         BATCH_SIZE, NUM_HEADS, N_QUERIES, D = Q.shape
         _, _, N_KEYS, _ = K.shape
        
-       
+
         # Determine tile sizes. As per the prompt, we'll use a fixed size.
         # In a real implementation, this would be tuned for the specific hardware.
         Q_TILE_SIZE = 128
@@ -85,7 +85,8 @@ class FlashAttentionPytorch(torch.autograd.Function):
                 
                 # 8. Compute the new output tile, O_i
                 # This is the "online output" update step
-                O_i = torch.einsum('b h i, b h i j, b h j d -> b h i d', alpha, O_i, torch.ones_like(Vj)) + torch.einsum('b h i j, b h j d -> b h i d', P_tilde_ij, Vj)
+                O_i = alpha.unsqueeze(-1) * O_i
+                O_i += torch.matmul(P_tilde.to(Vj_tile.dtype), Vj_tile)
                 
                 # Update the running accumulators for the next iteration
                 l_i = l_new.squeeze(-1)
